@@ -1,6 +1,7 @@
 # XWiki Knowledge Base Articles Inventorizer
 This project is a set of Python scripts that allow for inventories of XWiki knowledge base articles. 
 It uses the requests, json, os, warnings, urllib3, re, beautifulsoup4, and selenium Python packages.
+Also utilizes external source control system via GitHub actions.
 
 ## Prerequisites
 Before running this project, ensure that you have the following:
