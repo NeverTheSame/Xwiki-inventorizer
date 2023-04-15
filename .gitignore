@@ -1,0 +1,6 @@
+/tests/test1.py
+/api_secret.json
+/secret_creds.json
+.idea*
+.DS_Store
+/problematic_units.json
