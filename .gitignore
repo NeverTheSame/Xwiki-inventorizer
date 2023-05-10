@@ -5,3 +5,5 @@
 .DS_Store
 /problematic_units.json
 articles_in*.json
+general-knowledge_articles_*.md
+how-to_articles_*.md
