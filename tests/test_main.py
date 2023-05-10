@@ -375,7 +375,7 @@ class TestWebPageFetchWithApi(unittest.TestCase):
 
             # problematic_units.json: article-with-%5B
             if "%5B" in article_url_leaf:
-                print(f"Redirecting {page_url} to a different portal due to the restricted symbol")
+                print(f"Redirecting {page_url} \nto a different portal due to the restricted symbol\n")
                 page_url = page_url.replace("xwiki", "xwiki-sup")
 
             # problematic_units.json: article-with-%3A
@@ -407,29 +407,30 @@ class TestWebPageFetchWithApi(unittest.TestCase):
         for article_dict in dictionaries_of_articles:
             print(f"Processing {article_dict['page_url']}")
             if "xwiki-sup" in article_dict['page_url']:
-                print(f"Extra processing: {article_dict['page_url']}")
-            for link in article_dict["links"]:
-                href = link.get('href')
-                # find metadata page for an article
-                if re.search(r'pages/WebHome$', href):
-                    metadata_text_to_parse = self._get_xml(href)
-                    metadata_root = ET.fromstring(metadata_text_to_parse)
-                    created = metadata_root.find('xwiki:created', self.ns).text
-                # find history page for an article
-                if "WebHome/history" in href:
-                    modified_timestamps = []
-                    hist_text_to_parse = self._get_xml(href)
-                    history_root = ET.fromstring(hist_text_to_parse)
-                    for history_record in history_root.findall('.//xwiki:historySummary', self.ns):
-                        modified = history_record.find('xwiki:modified', self.ns).text
-                        modified_timestamps.append(modified)
-                        latest_modified = modified_timestamps[0]
-                        modifier = history_record.find('xwiki:modifier', self.ns).text
-                        modifier_without_prefix = modifier.replace("XWiki.", "").replace("xwiki:", "")
-                    historical_data[article_dict["title"]] = (article_dict["page_url"],
-                                                              created,
-                                                              latest_modified,
-                                                              modifier_without_prefix)
+                print(f"Skipping {article_dict['page_url']} due to the broken link")
+            if "xwiki-sup" not in article_dict['page_url']:
+                for link in article_dict["links"]:
+                    href = link.get('href')
+                    # find metadata page for an article
+                    if re.search(r'pages/WebHome$', href):
+                        metadata_text_to_parse = self._get_xml(href)
+                        metadata_root = ET.fromstring(metadata_text_to_parse)
+                        created = metadata_root.find('xwiki:created', self.ns).text
+                    # find history page for an article
+                    if "WebHome/history" in href:
+                        modified_timestamps = []
+                        hist_text_to_parse = self._get_xml(href)
+                        history_root = ET.fromstring(hist_text_to_parse)
+                        for history_record in history_root.findall('.//xwiki:historySummary', self.ns):
+                            modified = history_record.find('xwiki:modified', self.ns).text
+                            modified_timestamps.append(modified)
+                            latest_modified = modified_timestamps[0]
+                            modifier = history_record.find('xwiki:modifier', self.ns).text
+                            modifier_without_prefix = modifier.replace("XWiki.", "").replace("xwiki:", "")
+                        historical_data[article_dict["title"]] = (article_dict["page_url"],
+                                                                  created,
+                                                                  latest_modified,
+                                                                  modifier_without_prefix)
         # Sort by created
         sorted__historical_data = sorted(historical_data.items(), key=lambda x: x[1][1], reverse=False)
         for article in sorted__historical_data:
