@@ -40,7 +40,7 @@ class XWikiAPIFetcher:
         """
         # create pointer to secret files
         cwd = os.getcwd()
-        # parent_dir = os.path.abspath(os.path.join(cwd, os.pardir))
+
         # holds auth data
         self.secret_creds_file = os.path.join(cwd, 'secret_creds.json')
         # holds API elements data
@@ -59,6 +59,8 @@ class XWikiAPIFetcher:
         self.test_page_in_gk_history_space_url = api_secrets["rest"]["test_page_in_gk_history_space_url"]
         self.gk_children_pages_url = api_secrets["rest"]["gk_children_pages_url"]
         self.how_to_children_pages_url = api_secrets["rest"]["how_to_children_pages_url"]
+        self.configure_children_pages_url = api_secrets["rest"]["configure_children_pages_url"]
+        self.patches_fixes_children_pages_url = api_secrets["rest"]["patches_fixes_children_pages_url"]
 
         self.bad_article_url = api_secrets["bin"]["bad_article_url"]
         self.ns = {'xwiki': 'http://www.xwiki.org'}
@@ -126,16 +128,19 @@ class XWikiAPIFetcher:
 
     def _return_pages_list(self, url):
         """
-        Retrieves a list of XWiki pages from the specified URL.
+        Returns a list of page summaries for a given XWiki URL.
 
-        Args:
-            url (str): The URL of the XWiki page to retrieve.
+        Parameters:
+        url (str): The URL of the XWiki instance.
 
         Returns:
-            list: A list of pageSummary elements extracted from the XML response.
+        pages_list (list): A list of page summaries, each of which is represented as an Element object.
 
         Raises:
-            None
+        None.
+
+        Usage:
+        pages_list = _return_pages_list('https://myxwiki.org')
         """
         text_to_parse = self._get_xml(url)
         root = ET.fromstring(text_to_parse)
@@ -153,31 +158,24 @@ class XWikiAPIFetcher:
 
     def _create_articles_dictionaries_to_process(self, space_url):
         """
-        Given a space URL, this function fetches the XML content using _get_xml method,
-        processes it using ElementTree library, and returns a list of dictionaries
-        containing article data for articles in the specified space URL.
+        Returns a list of dictionaries, where each dictionary represents a page in a given XWiki space.
 
-        Args:
-            self (object): The object containing the _create_articles_dictionaries_to_process method
-            space_url (str): The URL of the XWiki space to be processed
+        Parameters:
+        space_url (str): The URL of the XWiki space to process.
 
         Returns:
-            articles_dictionaries (list): A list of dictionaries containing article data for articles
-            in the specified XWiki space URL. Each dictionary contains the following keys:
-                - title (str): The title of the article
-                - page_url (str): The URL of the article page
-                - links (list): A list of dictionaries, where each dictionary represents a link in the article.
-                  Each link dictionary contains the following keys:
-                      - label (str): The label of the link
-                      - url (str): The URL the link is pointing to
+        articles_dictionaries (list): A list of dictionaries, where each dictionary contains information about a page,
+        including its title, URL, and links.
 
         Raises:
-            N/A
+        None.
+
+        Usage:
+        articles_dictionaries = _create_articles_dictionaries_to_process('https://myxwiki.org/spaces/MySpace')
         """
         text_to_parse = self._get_xml(space_url)
         root = ET.fromstring(text_to_parse)
         articles_dictionaries = []
-        count = 0
         for page in root.findall('.//xwiki:pageSummary', self.ns):
             page_url = page.find('xwiki:xwikiRelativeUrl', self.ns).text
 
@@ -185,6 +183,10 @@ class XWikiAPIFetcher:
                 base_url, article_url_leaf = page_url.split("/How-to/", 1)
             elif "/General-Knowledge/" in page_url:
                 base_url, article_url_leaf = page_url.split("/General-Knowledge/", 1)
+            elif "/How-to-configure-VBO365/" in page_url:
+                base_url, article_url_leaf = page_url.split("/How-to-configure-VBO365/", 1)
+            elif "/Patch-notes/" in page_url:
+                base_url, article_url_leaf = page_url.split("/Patch-notes/", 1)
 
             # problematic_units.json: article-with-%5B
             if "%5B" in article_url_leaf:
@@ -194,6 +196,12 @@ class XWikiAPIFetcher:
             # problematic_units.json: article-with-%3A
             if "%3A" in article_url_leaf:
                 print(f"Skipping {page_url} due to the restricted symbols in URL")
+                page_url = page_url.replace("xwiki", "xwiki-sup")
+
+            # problematic_units.json: article-with-%60
+            if "%60" in article_url_leaf:
+                print(f"Skipping {page_url} due to the restricted symbols in URL")
+                page_url = page_url.replace("xwiki", "xwiki-sup")
 
             else:
                 title = page.find('xwiki:title', self.ns).text
@@ -204,69 +212,23 @@ class XWikiAPIFetcher:
         print("Links are created")
         return articles_dictionaries
 
-    def _fetch_and_process_xwiki_data(self, space_url):
+    @suppress_insecure_and_resource_warnings
+    def fetch_and_process_xwiki_data_json(self, space_url):
         """
-        Fetches metadata and historical data for all articles in the given XWiki space URL, and processes the data to
-        print information about each article, including its creation date, last modified date, and modifier.
-        The function returns a dictionary of article titles and their corresponding metadata, sorted by creation date.
+        Fetches XWiki data from the given space URL and processes it into a JSON object.
 
-        :param space_url: The URL of the XWiki space to fetch data from.
-        :type space_url: str
-        :return: A dictionary of article titles and their corresponding metadata, sorted by creation date.
-        :rtype: dict
-        """
-        articles_in_space = {}
-        dictionaries_of_articles = self._create_articles_dictionaries_to_process(space_url)
+        Args:
+            space_url (str): The URL of the XWiki space to fetch data from.
 
-        for article_dict in dictionaries_of_articles:
-            print(f"Processing {article_dict['page_url']}")
-            if "xwiki-sup" in article_dict['page_url']:
-                print(f"Skipping {article_dict['page_url']} due to the broken link")
-            if "xwiki-sup" not in article_dict['page_url']:
-                for link in article_dict["links"]:
-                    href = link.get('href')
-                    # find metadata page for an article
-                    if re.search(r'pages/WebHome$', href):
-                        metadata_text_to_parse = self._get_xml(href)
-                        metadata_root = ET.fromstring(metadata_text_to_parse)
-                        created = metadata_root.find('xwiki:created', self.ns).text
-                    # find history page for an article
-                    if "WebHome/history" in href:
-                        modified_timestamps = []
-                        hist_text_to_parse = self._get_xml(href)
-                        history_root = ET.fromstring(hist_text_to_parse)
-                        for history_record in history_root.findall('.//xwiki:historySummary', self.ns):
-                            modified = history_record.find('xwiki:modified', self.ns).text
-                            modified_timestamps.append(modified)
-                            latest_modified = modified_timestamps[0]
-                            modifier = history_record.find('xwiki:modifier', self.ns).text
-                            modifier_without_prefix = modifier.replace("XWiki.", "").replace("xwiki:", "")
-                        articles_in_space[article_dict["title"]] = (article_dict["page_url"],
-                                                                  created,
-                                                                  latest_modified,
-                                                                  modifier_without_prefix)
-        # Sort by created
-        sorted_historical_data = sorted(articles_in_space.items(), key=lambda x: x[1][1], reverse=False)
-        # for article in sorted_historical_data:
-        #     article_name = article[0]
-        #     article_url = article[1][0]
-        #     creation_date = article[1][1]
-        #     modified_date = article[1][2]
-        #     modifier = article[1][3]
-        #     print(f"Article [{article_name}]({article_url}) was created on **{creation_date}**. \n"
-        #           f"It was last modified on **{modified_date}** by **{modifier}**\n")
-        return sorted_historical_data
-
-    def _fetch_and_process_xwiki_data_json(self, space_url):
-        """
-        Fetches metadata and historical data for all articles in the given XWiki space URL, and processes the data to
-        print information about each article, including its creation date, last modified date, and modifier.
-        The function returns a JSON object of article titles and their corresponding metadata, sorted by creation date.
-
-        :param space_url: The URL of the XWiki space to fetch data from.
-        :type space_url: str
-        :return: A JSON object of article titles and their corresponding metadata, sorted by creation date.
-        :rtype: str
+        Returns:
+            A sorted list of dictionaries containing historical data for each article in the XWiki space.
+            Each dictionary contains the following keys:
+            - title: The title of the article.
+            - page_url: The URL of the article.
+            - created: The timestamp of when the article was created.
+            - latest_modified: The timestamp of the latest modification made to the article.
+            - modifier_without_prefix: The name of the user who made the latest modification to the article, without the
+                                        "XWiki." or "xwiki:" prefix.
         """
         articles_in_space = {}
         dictionaries_of_articles = self._create_articles_dictionaries_to_process(space_url)
@@ -301,30 +263,29 @@ class XWikiAPIFetcher:
         sorted_historical_data = sorted(articles_in_space.items(), key=lambda x: x[1]["created"], reverse=False)
         return sorted_historical_data
 
-    @suppress_insecure_and_resource_warnings
-    def inventory_vb365_gk_pages(self):
-        """
-        This function prints the processed data for the 'General Knowledge' children pages in the vb365 space.
-        """
-        return self._fetch_and_process_xwiki_data_json(self.gk_children_pages_url)
 
-    @suppress_insecure_and_resource_warnings
-    def inventory_vb365_how_to_pages(self):
-        """
-        This function prints the processed data for the 'How-to' children pages in the vb365 space.
-        """
-        return self._fetch_and_process_xwiki_data_json(self.how_to_children_pages_url)
+def process_space(pages_url, space_name):
+    """
+    This function calls two functions from the XWikiAPIFetcher and markdown_worker classes to process the XWiki data
+    and create markdown files for a given space.
 
+    Arguments:
+    pages_url (string): the URL of the XWiki space to process.
+    space_name (string): the name of the space to be created.
+
+    Returns:
+    This function does not return anything. Instead, it calls two functions:
+    """
+    articles_in_space = XWikiAPIFetcher().fetch_and_process_xwiki_data_json(pages_url)
+    articles_json_file = markdown_worker.create_articles_json_file(space_name, articles_in_space)
+    markdown_worker.create_md(space_name, articles_json_file)
 
 
 def main():
-    articles_in_how_to_space = XWikiAPIFetcher().inventory_vb365_how_to_pages()
-    articles_json_file = markdown_worker.create_articles_json_file("how-to", articles_in_how_to_space)
-    markdown_worker.create_md("how-to", articles_json_file)
-
-    articles_in_gk_space = XWikiAPIFetcher().inventory_vb365_gk_pages()
-    gk_articles_json_file = markdown_worker.create_articles_json_file("general-knowledge", articles_in_gk_space)
-    markdown_worker.create_md("general-knowledge", gk_articles_json_file)
+    process_space(XWikiAPIFetcher().how_to_children_pages_url, "how-to")
+    process_space(XWikiAPIFetcher().gk_children_pages_url, "general-knowledge")
+    process_space(XWikiAPIFetcher().configure_children_pages_url, "how-to-configure-vb365")
+    process_space(XWikiAPIFetcher().patches_fixes_children_pages_url, "patches-and-fixes")
 
 
 if __name__ == '__main__':
