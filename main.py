@@ -60,7 +60,6 @@ class XWikiAPIFetcher:
         self.gk_children_pages_url = api_secrets["rest"]["gk_children_pages_url"]
         self.how_to_children_pages_url = api_secrets["rest"]["how_to_children_pages_url"]
         self.configure_children_pages_url = api_secrets["rest"]["configure_children_pages_url"]
-        self.patches_fixes_children_pages_url = api_secrets["rest"]["patches_fixes_children_pages_url"]
 
         self.bad_article_url = api_secrets["bin"]["bad_article_url"]
         self.ns = {'xwiki': 'http://www.xwiki.org'}
@@ -285,7 +284,6 @@ def main():
     process_space(XWikiAPIFetcher().how_to_children_pages_url, "how-to")
     process_space(XWikiAPIFetcher().gk_children_pages_url, "general-knowledge")
     process_space(XWikiAPIFetcher().configure_children_pages_url, "how-to-configure-vb365")
-    process_space(XWikiAPIFetcher().patches_fixes_children_pages_url, "patches-and-fixes")
 
 
 if __name__ == '__main__':

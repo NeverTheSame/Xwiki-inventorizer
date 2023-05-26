@@ -46,7 +46,7 @@ def create_md(space_name, articles_json_file):
     Raises:
         FileNotFoundError: If the articles_json_file does not exist.
     """
-    str_now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    str_now = datetime.now(timezone.utc).strftime("%Y_%m_%d")
     resulting_md = f"Xwiki articles in <b>{space_name}<b> space as of {str_now}:\n"
     resulting_md = resulting_md + ' | <b>Article</b> | <b>Created</b> | <b>Modified</b> | <b>Modifier</b> |\n'
     resulting_md = resulting_md + ' | ---- | ------ | ---- | ---- |\n'
@@ -70,7 +70,7 @@ def create_md(space_name, articles_json_file):
                                       f" | {modifier} |\n"
 
 
-    md_filename = f"{space_name}_articles_{str_now}.md"
+    md_filename = f"articles_in_{space_name}_as_of{str_now}.md"
 
     if not os.path.exists(md_filename):
         with open(md_filename, 'w') as f:
