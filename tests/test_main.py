@@ -48,9 +48,9 @@ class TestWebPageFetchWithSoup(unittest.TestCase):
     cwd = os.getcwd()
     parent_dir = os.path.abspath(os.path.join(cwd, os.pardir))
     # holds auth data
-    secret_creds_file = os.path.join(parent_dir, 'secret_creds.json')
+    secret_creds_file = os.path.join(parent_dir, 'configs', 'secret_creds.json')
     # holds API elements data
-    api_secret_file = os.path.join(parent_dir, 'api_secret.json')
+    api_secret_file = os.path.join(parent_dir, 'configs', 'api_secret.json')
 
     # load the JSON data
     with open(api_secret_file, 'r') as f:
@@ -159,9 +159,9 @@ class TestWebPageFetchWithApi(unittest.TestCase):
         cwd = os.getcwd()
         parent_dir = os.path.abspath(os.path.join(cwd, os.pardir))
         # holds auth data
-        self.secret_creds_file = os.path.join(parent_dir, 'secret_creds.json')
+        self.secret_creds_file = os.path.join(parent_dir, 'configs', 'secret_creds.json')
         # holds API elements data
-        api_secret_file = os.path.join(parent_dir, 'api_secret.json')
+        api_secret_file = os.path.join(parent_dir, 'configs', 'api_secret.json')
 
         # load the JSON data
         with open(api_secret_file, 'r') as f:

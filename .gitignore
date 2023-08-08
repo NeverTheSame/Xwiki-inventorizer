@@ -1,7 +1,6 @@
-/tests/test1.py
-/api_secret.json
-/secret_creds.json
+/tests
+/configs
+/outputs
 .idea*
 .DS_Store
-/problematic_units.json
-*.json
+.github

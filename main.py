@@ -1,25 +1,37 @@
-import sys
-import unittest
+import json
+import os
+import re
+import warnings
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import requests
-import json
-import os
-import warnings
 import urllib3
-import re
 
-from bs4 import BeautifulSoup
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
-
-import xml.etree.ElementTree as ET
-
+import html_worker
 import markdown_worker
+import utilities
+from utilities import transform_datetime
+from utilities import get_value_from_secret_file_json
+
+
+def process_space(pages_url, space_name):
+    """
+    This function calls two functions from the XWikiAPIFetcher and markdown_worker classes to process the XWiki data
+    and create markdown files for a given space.
+
+    Arguments:
+    pages_url (string): the URL of the XWiki space to process.
+    space_name (string): the name of the space to be created.
+
+    Returns:
+    This function does not return anything. Instead, it calls two functions:
+    """
+    articles_in_space = XWikiAPIFetcher().fetch_and_process_xwiki_data(pages_url)
+    articles_json_file = markdown_worker.create_articles_json_file(space_name, articles_in_space)
+    markdown_worker.create_md(space_name, articles_json_file)
+    html_worker.create_html_for_single_space(space_name, articles_json_file)
 
 
 class XWikiAPIFetcher:
@@ -42,9 +54,11 @@ class XWikiAPIFetcher:
         cwd = os.getcwd()
 
         # holds auth data
-        self.secret_creds_file = os.path.join(cwd, 'secret_creds.json')
+        self.secret_creds_file = os.path.join(cwd, 'configs', 'secret_creds.json')
         # holds API elements data
-        api_secret_file = os.path.join(cwd, 'api_secret.json')
+        api_secret_file = os.path.join(cwd, 'configs', 'api_secret.json')
+        # holds resulting HTML file
+        self.html_file = os.path.join(cwd, 'outputs', 'articles_in_all_spaces.html')
 
         # load the JSON data
         with open(api_secret_file, 'r') as f:
@@ -60,6 +74,7 @@ class XWikiAPIFetcher:
         self.gk_children_pages_url = api_secrets["rest"]["gk_children_pages_url"]
         self.how_to_children_pages_url = api_secrets["rest"]["how_to_children_pages_url"]
         self.configure_children_pages_url = api_secrets["rest"]["configure_children_pages_url"]
+        self.inventory_resulting_article = api_secrets["rest"]["inventory_resulting_article"]
 
         self.bad_article_url = api_secrets["bin"]["bad_article_url"]
         self.ns = {'xwiki': 'http://www.xwiki.org'}
@@ -155,7 +170,7 @@ class XWikiAPIFetcher:
             print(f'xwikiRelativeUrl: {xwiki_relative_url}\n')
         return pages_list
 
-    def _create_articles_dictionaries_to_process(self, space_url):
+    def _create_articles_dictionaries_to_process(self, space_url) -> list:
         """
         Returns a list of dictionaries, where each dictionary represents a page in a given XWiki space.
 
@@ -174,7 +189,7 @@ class XWikiAPIFetcher:
         """
         text_to_parse = self._get_xml(space_url)
         root = ET.fromstring(text_to_parse)
-        articles_dictionaries = []
+        articles_list = []
         for page in root.findall('.//xwiki:pageSummary', self.ns):
             page_url = page.find('xwiki:xwikiRelativeUrl', self.ns).text
 
@@ -189,7 +204,7 @@ class XWikiAPIFetcher:
 
             # problematic_units.json: article-with-%5B
             if "%5B" in article_url_leaf:
-                print(f"Redirecting {page_url} \nto a different portal due to the restricted symbol\n")
+                print(f"Skipping {page_url} due to the restricted symbols in URL")
                 page_url = page_url.replace("xwiki", "xwiki-sup")
 
             # problematic_units.json: article-with-%3A
@@ -206,13 +221,13 @@ class XWikiAPIFetcher:
                 title = page.find('xwiki:title', self.ns).text
                 links = page.findall('xwiki:link', self.ns)
                 page_data = {'title': title, 'page_url': page_url, 'links': links}
-                articles_dictionaries.append(page_data)
+                articles_list.append(page_data)
 
-        print("Links are created")
-        return articles_dictionaries
+        print(f"Links for {space_url} are created")
+        return articles_list
 
     @suppress_insecure_and_resource_warnings
-    def fetch_and_process_xwiki_data_json(self, space_url):
+    def fetch_and_process_xwiki_data(self, space_url) -> list:
         """
         Fetches XWiki data from the given space URL and processes it into a JSON object.
 
@@ -262,28 +277,102 @@ class XWikiAPIFetcher:
         sorted_historical_data = sorted(articles_in_space.items(), key=lambda x: x[1]["created"], reverse=False)
         return sorted_historical_data
 
+    @suppress_insecure_and_resource_warnings
+    def create_html_for_all_spaces(self):
+        list_of_urls = [self.gk_children_pages_url, self.how_to_children_pages_url,
+                        self.configure_children_pages_url]
+        dictionary_of_all_articles = {}
+        resulting_html = r"""
+        <style>
+            table {
+                border-collapse: separate;
+                border-spacing: 1px;
+            }
+        
+            table th, table td {
+                border: 1px solid #999999;
+                padding: 5px;
+            }
+        </style>
+        <body>
+        """
+        str_now = datetime.now(timezone.utc).strftime("%Y_%m_%d")
+        for urL_space in list_of_urls:
+            # extract space name from URL
+            parsed_url = urlparse(urL_space)
+            # Extract the path and split it into segments
+            path_segments = parsed_url.path.split('/')
+            # Find the namespace segment
+            namespace_segment = path_segments[-4]
+            space_name = namespace_segment.replace('-', ' ')
 
-def process_space(pages_url, space_name):
-    """
-    This function calls two functions from the XWikiAPIFetcher and markdown_worker classes to process the XWiki data
-    and create markdown files for a given space.
+            articles = self.fetch_and_process_xwiki_data(urL_space)
+            resulting_html += f"""<h1>Articles in {space_name} space as of {transform_datetime(str_now)}</h1>
+                <table>
+                    <tr>
+                        <th><b>Article</b></th>
+                        <th><b>Created</b></th>
+                        <th><b>Modified</b></th>
+                        <th><b>Modifier</b></th>
+                    </tr>
+                """
+            for article in articles:
+                resulting_html += f"""<tr>
+                        <td><a href="{article[1]['page_url']}">{article[0]}</a></td>
+                        <td>{transform_datetime(article[1]['created'])}</td>
+                        <td>{transform_datetime(article[1]['latest_modified'])}</td>
+                        <td>{article[1]['modifier_without_prefix']}</td>
+                    </tr>
+                """
+            resulting_html += "</table>"
+        resulting_html += "</body>"
+        html_filename = f"outputs/articles_in_all_spaces.html"
+        if not os.path.exists(html_filename):
+            with open(html_filename, 'w') as f:
+                f.write(resulting_html)
+            print(f"Created HTML file: {html_filename}\n")
+        else:
+            print("HTML file already exists: " + html_filename)
 
-    Arguments:
-    pages_url (string): the URL of the XWiki space to process.
-    space_name (string): the name of the space to be created.
+        return html_filename
 
-    Returns:
-    This function does not return anything. Instead, it calls two functions:
-    """
-    articles_in_space = XWikiAPIFetcher().fetch_and_process_xwiki_data_json(pages_url)
-    articles_json_file = markdown_worker.create_articles_json_file(space_name, articles_in_space)
-    markdown_worker.create_md(space_name, articles_json_file)
+    @suppress_insecure_and_resource_warnings
+    def update_article(self, article_url):
+        headers = {
+            'Content-Type': 'text/plain',
+            'Authorization': f"{get_value_from_secret_file_json('bearer_token')}"
+        }
+
+        if os.path.exists(self.html_file):
+            with open(self.html_file, 'r') as f:
+                data = "{{html}}"
+                data += f.read()
+                data += "{{/html}}"
+            response = requests.put(article_url, headers=headers, data=data, verify=False)
+
+            if response.status_code == 202:
+                print('Page updated successfully.')
+                self._clean_up()
+            else:
+                print(f'Failed to update page. Status code: {response.status_code}')
+                print('Response content:', response.content)
+
+    def _clean_up(self):
+        """Adds timestamp to HTML file and renames it so that it is not used for the next update"""
+        try:
+            self.html_file = self.html_file.replace(".html",
+                                                    f"_{datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}.html")
+            os.rename("outputs/articles_in_all_spaces.html", self.html_file)
+            print(f"Renamed HTML file to {self.html_file}")
+        except Exception as e:
+            print("Failed to rename HTML file")
 
 
 def main():
-    process_space(XWikiAPIFetcher().how_to_children_pages_url, "how-to")
-    process_space(XWikiAPIFetcher().gk_children_pages_url, "general-knowledge")
-    process_space(XWikiAPIFetcher().configure_children_pages_url, "how-to-configure-vb365")
+    xwiki_fetcher = XWikiAPIFetcher()
+    xwiki_fetcher.create_html_for_all_spaces()
+    html_article = xwiki_fetcher.inventory_resulting_article
+    xwiki_fetcher.update_article(html_article)
 
 
 if __name__ == '__main__':

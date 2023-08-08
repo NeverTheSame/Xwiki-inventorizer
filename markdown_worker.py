@@ -70,7 +70,7 @@ def create_md(space_name, articles_json_file):
                                       f" | {modifier} |\n"
 
 
-    md_filename = f"articles_in_{space_name}_as_of{str_now}.md"
+    md_filename = f"articles_in_{space_name}_as_of_{str_now}.md"
 
     if not os.path.exists(md_filename):
         with open(md_filename, 'w') as f:
