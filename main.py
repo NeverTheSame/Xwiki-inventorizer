@@ -11,9 +11,8 @@ import urllib3
 
 import html_worker
 import markdown_worker
-import utilities
-from utilities import transform_datetime
 from utilities import get_value_from_secret_file_json
+from utilities import transform_datetime
 
 
 def process_space(pages_url, space_name):
@@ -70,6 +69,7 @@ class XWikiAPIFetcher:
         self.vbm_url = api_secrets["bin"]["vbm_url"]
         self.vb365_main_space_url = api_secrets["rest"]["vb365_main_space_url"]
         self.gk_space_url = api_secrets["rest"]["gk_space_url"]
+        self.bugs_url = api_secrets["rest"]["bugs_url"]
         self.test_page_in_gk_history_space_url = api_secrets["rest"]["test_page_in_gk_history_space_url"]
         self.gk_children_pages_url = api_secrets["rest"]["gk_children_pages_url"]
         self.how_to_children_pages_url = api_secrets["rest"]["how_to_children_pages_url"]
@@ -190,6 +190,7 @@ class XWikiAPIFetcher:
         text_to_parse = self._get_xml(space_url)
         root = ET.fromstring(text_to_parse)
         articles_list = []
+        article_url_leaf = ""
         for page in root.findall('.//xwiki:pageSummary', self.ns):
             page_url = page.find('xwiki:xwikiRelativeUrl', self.ns).text
 
@@ -241,7 +242,7 @@ class XWikiAPIFetcher:
             - page_url: The URL of the article.
             - created: The timestamp of when the article was created.
             - latest_modified: The timestamp of the latest modification made to the article.
-            - modifier_without_prefix: The name of the user who made the latest modification to the article, without the
+            - creator_without_prefix: The name of the user who created the article, without the
                                         "XWiki." or "xwiki:" prefix.
         """
         articles_in_space = {}
@@ -267,12 +268,12 @@ class XWikiAPIFetcher:
                             modified = history_record.find('xwiki:modified', self.ns).text
                             modified_timestamps.append(modified)
                             latest_modified = modified_timestamps[0]
-                            modifier = history_record.find('xwiki:modifier', self.ns).text
-                            modifier_without_prefix = modifier.replace("XWiki.", "").replace("xwiki:", "")
+                            creator = history_record.find('xwiki:modifier', self.ns).text
+                            creator_without_prefix = creator.replace("XWiki.", "").replace("xwiki:", "")
                         articles_in_space[article_dict["title"]] = {"page_url": article_dict["page_url"],
                                                                     "created": created,
                                                                     "latest_modified": latest_modified,
-                                                                    "modifier_without_prefix": modifier_without_prefix}
+                                                                    "creator_without_prefix": creator_without_prefix}
         # Sort by created
         sorted_historical_data = sorted(articles_in_space.items(), key=lambda x: x[1]["created"], reverse=False)
         return sorted_historical_data
@@ -281,7 +282,6 @@ class XWikiAPIFetcher:
     def create_html_for_all_spaces(self):
         list_of_urls = [self.gk_children_pages_url, self.how_to_children_pages_url,
                         self.configure_children_pages_url]
-        dictionary_of_all_articles = {}
         resulting_html = r"""
         <style>
             table {
@@ -313,7 +313,7 @@ class XWikiAPIFetcher:
                         <th><b>Article</b></th>
                         <th><b>Created</b></th>
                         <th><b>Modified</b></th>
-                        <th><b>Modifier</b></th>
+                        <th><b>Creator</b></th>
                     </tr>
                 """
             for article in articles:
@@ -321,7 +321,7 @@ class XWikiAPIFetcher:
                         <td><a href="{article[1]['page_url']}">{article[0]}</a></td>
                         <td>{transform_datetime(article[1]['created'])}</td>
                         <td>{transform_datetime(article[1]['latest_modified'])}</td>
-                        <td>{article[1]['modifier_without_prefix']}</td>
+                        <td>{article[1]['creator_without_prefix']}</td>
                     </tr>
                 """
             resulting_html += "</table>"
